@@ -5,11 +5,13 @@ on:
     branches:
       - main
 
+concurrency:
+  group: self-hosted-deploy-main
+  cancel-in-progress: true
+
 jobs:
-  build-on-my-server:
-    # Change this from 'ubuntu-latest' to 'self-hosted'
-    # You can also use custom labels you defined during setup, e.g., 'self-hosted', 'linux', 'x64'
-    runs-on: self-hosted 
+  deploy-on-my-server:
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -20,3 +22,21 @@ jobs:
           echo "Running on my own server!"
           uname -a
           df -h
+          node --version || echo "Node.js not installed"
+          python3 --version || echo "Python3 not installed"
+          npm --version || echo "npm not installed"
+
+      - name: Deploy backend and frontend
+        env:
+          NODE_ENV: production
+          PORT: 3000
+        run: |
+          chmod +x scripts/deploy-self-hosted.sh
+          ./scripts/deploy-self-hosted.sh
+
+      - name: Verify deployment
+        run: |
+          echo "Frontend health:"
+          curl -fsS "http://127.0.0.1:3000/api/health"
+          echo ""
+          echo "Deployment complete. App is running on port 3000."
