@@ -43,16 +43,13 @@ setup_python() {
   PYTHON_BIN="python3"
 
   if [[ -d "$ROOT_DIR/backend/myenv/bin" ]]; then
-    # shellcheck disable=SC1091
     source "$ROOT_DIR/backend/myenv/bin/activate"
     PYTHON_BIN="python"
   elif [[ ! -d "$ROOT_DIR/backend/.venv" ]]; then
     "$PYTHON_BIN" -m venv "$ROOT_DIR/backend/.venv"
-    # shellcheck disable=SC1091
     source "$ROOT_DIR/backend/.venv/bin/activate"
     PYTHON_BIN="python"
   else
-    # shellcheck disable=SC1091
     source "$ROOT_DIR/backend/.venv/bin/activate"
     PYTHON_BIN="python"
   fi

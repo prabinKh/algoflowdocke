@@ -9,7 +9,7 @@ import { startDjango } from "./run_backend.ts";
 
 dotenv.config();
 
-// NO import.meta.url here! We rely entirely on process.cwd()
+// We rely entirely on process.cwd() to avoid import.meta issues in bundles
 
 async function startServer() {
   const app = express();
@@ -98,7 +98,7 @@ async function startServer() {
       immutable: true,
     }));
     
-    // Express 5 / path-to-regexp v8 catch-all syntax
+    // FIX: Express 5 / path-to-regexp v8 requires named wildcards like {*splat}
     app.get('/{*splat}', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
