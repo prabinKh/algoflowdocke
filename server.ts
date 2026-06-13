@@ -2,17 +2,12 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { startDjango } from "./run_backend.ts";
 
 dotenv.config();
-
-// This works perfectly now because we are building as an ES Module (.mjs)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
@@ -54,23 +49,19 @@ async function startServer() {
   });
 
   // Proxy API and Admin requests to Django
-  // MUST be before express.json() to avoid consuming request body for POST/PATCH
   app.use(
     createProxyMiddleware({
       target: "http://127.0.0.1:8001",
       changeOrigin: true,
-      // Renamed 'path' to 'reqPath' to avoid shadowing the imported 'path' module
       pathFilter: (reqPath) => (reqPath.startsWith("/api") && reqPath !== "/api/health") || reqPath.startsWith("/django-admin") || reqPath.startsWith("/static") || reqPath.startsWith("/media"),
       proxyTimeout: 30000,
       timeout: 30000,
       on: {
         proxyReq: (proxyReq, req, res) => {
-          // Forward the original Host header as X-Forwarded-Host for SaaS multi-tenant IP resolution
           const clientHost = req.headers.host;
           if (clientHost) {
             proxyReq.setHeader('X-Forwarded-Host', clientHost);
           }
-          // Log proxy start
           const log = `Proxying ${req.method} ${req.url} -> http://localhost:8001${req.url}\n`;
           process.stdout.write(log);
           safeLogWrite(log);
