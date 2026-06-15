@@ -57,4 +57,5 @@ whitenoise==6.9.0
 django-jazzmin==3.0.1
 psycopg2-binary==2.9.10
 drf-spectacular==0.29.0
+dj-database-url==2.3.0
 gunicorn

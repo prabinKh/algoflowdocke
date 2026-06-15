@@ -1,3 +1,5 @@
+
+
 name: Self-Hosted Workflow
 
 on:
@@ -37,13 +39,13 @@ jobs:
           fuser -k 8001/tcp 2>/dev/null || true
           # Remove the PID file if it exists
           rm -f "${GITHUB_WORKSPACE}/.deploy/app.pid"
-        continue-on-error: true # Allow cleanup to fail if processes don't exist
+        continue-on-error: true
 
       - name: Deploy backend and frontend
         env:
           PORT: 3000
           NODE_OPTIONS: --max-old-space-size=4096
-          # Ensure these match settings.py and are set as GitHub Secrets
+          # These secrets must be set in your GitHub Repository Settings
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
           DJANGO_DEBUG: ${{ secrets.DJANGO_DEBUG }}
           DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
@@ -56,13 +58,14 @@ jobs:
       - name: Verify deployment
         run: |
           echo "Waiting for services to become ready..."
-          for i in {1..60}; do # Increased timeout for health check
+          # 60 attempts * 5 seconds = 5 minutes timeout
+          for i in {1..60}; do
             if curl -fsS "http://127.0.0.1:3000/api/health" >/dev/null 2>&1; then
               echo "Health check passed on port 3000"
               echo "Deployment complete. App is running on port 3000."
               exit 0
             fi
-            sleep 5 # Increased sleep interval
+            sleep 5
           done
-          echo "Health check failed after multiple attempts."
+          echo "Health check failed after 5 minutes."
           exit 1
