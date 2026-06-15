@@ -17,10 +17,21 @@ ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 # Database configuration using DATABASE_URL
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///" + str(BASE_DIR / "db.sqlite3"))
-DATABASES = {
-    "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
-}
+# Fix: Ensure DATABASE_URL is not an empty string before passing to dj_database_url.parse
+env_db_url = os.getenv("DATABASE_URL", "").strip()
+default_db_url = "sqlite:///" + str(BASE_DIR / "db.sqlite3")
+
+if env_db_url:
+    DATABASES = {
+        "default": dj_database_url.parse(env_db_url, conn_max_age=600)
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 INSTALLED_APPS = [
     "jazzmin",

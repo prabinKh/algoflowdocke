@@ -79,7 +79,7 @@ start_app() {
   echo "App started in background. Logs available at $LOG_DIR/app.log"
 }
 
-# Main execution flowa
+# Main execution flow
 setup_python
 run_migrations
 setup_node
