@@ -10,17 +10,14 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-# Correct environment variable names matching .env.example
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-placeholder-key")
+# Ensure SECRET_KEY is never empty to avoid ImproperlyConfigured error
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or os.getenv("SECRET_KEY") or "django-insecure-fallback-key-for-dev-only"
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 # Database configuration using DATABASE_URL
-# Fix: Ensure DATABASE_URL is not an empty string before passing to dj_database_url.parse
 env_db_url = os.getenv("DATABASE_URL", "").strip()
-default_db_url = "sqlite:///" + str(BASE_DIR / "db.sqlite3")
-
 if env_db_url:
     DATABASES = {
         "default": dj_database_url.parse(env_db_url, conn_max_age=600)
