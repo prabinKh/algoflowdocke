@@ -1,0 +1,22 @@
+services:
+  algoflow:
+    build: .
+    image: algoflow:latest
+    container_name: algoflow-app
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - ./backend/db.sqlite3:/app/backend/db.sqlite3
+      - ./backend/media:/app/backend/media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

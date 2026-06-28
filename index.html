@@ -7,6 +7,74 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      Fallback UI shown if React never mounts (module load error,
+      network failure on the JS bundle, syntax error, etc). React's
+      ErrorBoundary can ONLY catch errors thrown during render - it
+      cannot catch a script that fails to load at all, or an error
+      thrown before React.createRoot() runs. Without this, those
+      failure modes produce a totally blank white page with the only
+      clue being in the browser console.
+    -->
+    <div id="boot-fallback" style="display:none; min-height:100vh; align-items:center; justify-content:center; flex-direction:column; gap:12px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; padding:24px; text-align:center; background:#fafafa; color:#111;">
+      <div style="font-size:40px;">⚠️</div>
+      <h1 style="font-size:18px; font-weight:600; margin:0;">This page couldn't load</h1>
+      <p id="boot-fallback-message" style="font-size:13px; color:#666; max-width:480px; margin:0; word-break:break-word;">
+        Something went wrong before the app could start.
+      </p>
+      <button onclick="window.location.reload()" style="margin-top:8px; padding:8px 20px; border-radius:8px; border:1px solid #ddd; background:#fff; cursor:pointer; font-size:13px;">
+        Reload page
+      </button>
+    </div>
+
+    <script>
+      // Reveal the fallback UI if React hasn't mounted anything into
+      // #root within a few seconds, OR if a fatal script error fires
+      // before React gets the chance to render its own ErrorBoundary.
+      (function () {
+        var revealed = false;
+        function showFallback(message) {
+          if (revealed) return;
+          revealed = true;
+          var root = document.getElementById('root');
+          var fb = document.getElementById('boot-fallback');
+          var msg = document.getElementById('boot-fallback-message');
+          if (root) root.style.display = 'none';
+          if (fb) fb.style.display = 'flex';
+          if (msg && message) msg.textContent = message;
+        }
+
+        window.addEventListener('error', function (e) {
+          // Only react to errors that happen before the app has
+          // rendered anything real into #root.
+          var root = document.getElementById('root');
+          if (root && root.childElementCount === 0) {
+            showFallback(e.message || 'A script error occurred while loading the page.');
+          }
+        });
+
+        window.addEventListener('unhandledrejection', function (e) {
+          var root = document.getElementById('root');
+          if (root && root.childElementCount === 0) {
+            var reason = e.reason && e.reason.message ? e.reason.message : String(e.reason || 'Unknown error');
+            showFallback(reason);
+          }
+        });
+
+        // Last-resort timeout: if nothing has rendered into #root
+        // after 8 seconds, something silently failed (e.g. a network
+        // request that never resolves with no timeout, or the JS
+        // bundle never loaded at all).
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.childElementCount === 0) {
+            showFallback('The app is taking longer than expected to start. Check your internet connection or try reloading.');
+          }
+        }, 8000);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

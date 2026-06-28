@@ -1,22 +1,109 @@
 services:
-  algoflow:
+
+  # ===================================================================
+  # nginx - the ONLY service exposed on your public IP (ports 80/443).
+  # Everything else talks on the internal docker network only.
+  # ===================================================================
+  nginx:
+    build: ./nginx
+    container_name: algoflow-nginx
+    restart: always
+    ports:
+      - "80:80"
+      # Port 443 is commented out until you switch to the SSL config
+      # (see DEPLOYMENT.md "Going to HTTPS"). Uncomment once you have
+      # a real domain + Certbot certificate.
+      # - "443:443"
+    volumes:
+      # Static & media must be readable by nginx directly from the
+      # same volumes the app container writes to.
+      - static_data:/app/backend/staticfiles:ro
+      - media_data:/app/backend/media:ro
+    depends_on:
+      - app
+
+  # ===================================================================
+  # app - your existing Node + Django container (built from the
+  # repo root Dockerfile, unchanged). Not exposed publicly anymore -
+  # nginx is the only thing the internet can reach.
+  # ===================================================================
+  app:
     build: .
     image: algoflow:latest
     container_name: algoflow-app
     restart: always
+    # NOTE: port 3000 IS published to the host (unlike 8001) because
+    # this app's own backend code (see backend/company/admin.py,
+    # backend/account/views.py, backend/efrontend/views.py) generates
+    # tenant URLs like "http://{slug}.localhost:3000" directly - those
+    # links need port 3000 to actually be reachable from your browser.
+    # Browsers/macOS resolve any *.localhost name to 127.0.0.1
+    # automatically (RFC 6761) - no /etc/hosts entry needed.
     ports:
       - "3000:3000"
+    expose:
+      - "8001"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - DATABASE_URL=postgresql://algoflow_user:${POSTGRES_PASSWORD}@db:5432/algoflow
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/0
     volumes:
-      - ./backend/db.sqlite3:/app/backend/db.sqlite3
-      - ./backend/media:/app/backend/media
+      - static_data:/app/backend/staticfiles
+      - media_data:/app/backend/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # ===================================================================
+  # db - Postgres. Your settings.py already reads DATABASE_URL via
+  # dj_database_url, and requirements.txt already has psycopg2-binary,
+  # but no Postgres container existed before - it was silently
+  # falling back to SQLite (fine for dev, NOT fine for production
+  # with multiple companies/concurrent writers).
+  # ===================================================================
+  db:
+    image: postgres:16-alpine
+    container_name: algoflow-db
+    restart: always
+    environment:
+      POSTGRES_DB: algoflow
+      POSTGRES_USER: algoflow_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U algoflow_user -d algoflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================================================================
+  # redis - your settings.py already configures CELERY_BROKER_URL /
+  # CELERY_RESULT_BACKEND pointing at redis, but no Redis container
+  # existed in the original compose file either.
+  # ===================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: algoflow-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_data:
+  media_data:

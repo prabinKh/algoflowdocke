@@ -19,28 +19,6 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: !isProduction,
       chunkSizeWarningLimit: 1000,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (!id.includes('node_modules')) return;
-
-            if (id.includes('recharts') || id.includes('d3-')) return 'charts';
-            if (id.includes('three') || id.includes('@react-three')) return 'three';
-            if (id.includes('gsap') || id.includes('/motion')) return 'animation';
-            if (id.includes('@radix-ui')) return 'radix';
-            if (id.includes('@tanstack')) return 'query';
-            if (
-              id.includes('react-dom') ||
-              id.includes('react-router') ||
-              id.includes('/react/')
-            ) {
-              return 'react';
-            }
-
-            return 'vendor';
-          },
-        },
-      },
     },
     server: {
       port: 3000,
@@ -50,7 +28,10 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: 'http://127.0.0.1:8001',
-          changeOrigin: true,
+          // changeOrigin is OFF on purpose - same reason as server.ts.
+          // Rewriting the Host header to the target breaks Django's
+          // subdomain-based tenant detection (Company.resolve_from_request).
+          changeOrigin: false,
         },
       },
     },

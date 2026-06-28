@@ -38,6 +38,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/
@@ -48,8 +49,10 @@ COPY --from=frontend-builder /app/package.json ./
 COPY --from=frontend-builder /app/node_modules ./node_modules
 COPY backend ./backend
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r backend/requirements.txt gunicorn
+RUN pip install --no-cache-dir --break-system-packages \
+    --retries 10 \
+    --timeout 120 \
+    -r backend/requirements.txt gunicorn
 
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh

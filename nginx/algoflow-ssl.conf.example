@@ -1,0 +1,128 @@
+# =====================================================================
+# nginx config for AlgoFlow (algoflowev4) — HTTPS + wildcard subdomains
+# =====================================================================
+# WHAT THIS FILE DOES, IN PLAIN TERMS:
+#
+# Your app routes each company primarily by SUBDOMAIN (see
+# backend/company/models.py, Company.resolve_from_request) — e.g.
+# aalu.yourdomain.com, daraz.yourdomain.com — not by IP, and not only
+# by URL path. nginx's job is:
+#   1. Accept HTTPS for your bare domain AND every subdomain.
+#   2. Serve /static/ and /media/ directly from disk.
+#   3. Proxy /api/ and /django-admin/ to Django (gunicorn, :8001).
+#   4. Proxy everything else to the Node server (:3000), which serves
+#      the built React app and handles its own routing.
+#
+# IMPORTANT — wildcard subdomains need a WILDCARD certificate:
+# A normal Certbot certificate for "yourdomain.com" does NOT cover
+# "aalu.yourdomain.com" — wildcard subdomains need a certificate for
+# "*.yourdomain.com", which can ONLY be issued via DNS-01 challenge
+# (not the simpler --standalone/HTTP-01 method). See DEPLOYMENT.md
+# "Going to HTTPS" for the exact certbot command for your DNS
+# provider (e.g. certbot-dns-cloudflare, certbot-dns-route53, etc).
+# =====================================================================
+
+upstream node_app {
+    server app:3000;
+}
+
+upstream django_app {
+    server app:8001;
+}
+
+limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/s;
+
+# ---------------------------------------------------------------------
+# HTTP -> HTTPS redirect, for the bare domain AND every subdomain.
+# ---------------------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name yourdomain.com *.yourdomain.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---------------------------------------------------------------------
+# HTTPS — this is where everything actually happens.
+# ---------------------------------------------------------------------
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    # The leading "*." matches EVERY company subdomain
+    # (aalu.yourdomain.com, daraz.yourdomain.com, etc). The bare
+    # "yourdomain.com" is listed separately since "*.yourdomain.com"
+    # does NOT also match the bare domain in nginx's server_name
+    # matching rules.
+    server_name yourdomain.com *.yourdomain.com;
+
+    # ---- SSL certificate: MUST be a wildcard cert, see note above ----
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 25M;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # =================================================================
+    # 1. Django static files
+    # =================================================================
+    location /static/ {
+        alias /app/backend/staticfiles/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # =================================================================
+    # 2. Media files
+    # =================================================================
+    location /media/ {
+        alias /app/backend/media/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # =================================================================
+    # 3. Django REST API
+    # =================================================================
+    location /api/ {
+        location ~ ^/api/account/(login|register)/ {
+            limit_req zone=login_limit burst=10 nodelay;
+            proxy_pass http://django_app;
+            include /etc/nginx/proxy_params.conf;
+        }
+
+        proxy_pass http://django_app;
+        include /etc/nginx/proxy_params.conf;
+    }
+
+    # =================================================================
+    # 4. Django admin panel
+    # =================================================================
+    location /django-admin/ {
+        proxy_pass http://django_app;
+        include /etc/nginx/proxy_params.conf;
+    }
+
+    # =================================================================
+    # 5. Everything else -> Node (React app)
+    # =================================================================
+    location / {
+        proxy_pass http://node_app;
+        include /etc/nginx/proxy_params.conf;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

@@ -123,6 +123,13 @@ for host in ALLOWED_HOSTS:
         else:
             CSRF_TRUSTED_ORIGINS.append(f"https://*{host}")
             CSRF_TRUSTED_ORIGINS.append(f"http://*{host}")
+            # Also add the :3000 variant explicitly. Company subdomain
+            # requests (e.g. "aalu.localhost:3000") hit the Node server
+            # directly on port 3000, not the default 80/443 - and
+            # Django's CSRF origin check requires an exact port match.
+            # Without this, login/POST requests from any company
+            # subdomain in local dev would fail CSRF validation.
+            CSRF_TRUSTED_ORIGINS.append(f"http://*{host}:3000")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 CSRF_COOKIE_HTTPONLY = False

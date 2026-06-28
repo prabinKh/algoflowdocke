@@ -34,9 +34,27 @@ async function startServer() {
     ["/api", "/django-admin", "/static", "/media"],
     createProxyMiddleware({
       target: "http://127.0.0.1:8001",
-      changeOrigin: true,
+      // IMPORTANT: changeOrigin is OFF on purpose. With changeOrigin:true,
+      // http-proxy-middleware rewrites the outgoing Host header to match
+      // the target (127.0.0.1:8001), which destroys the original
+      // hostname the browser sent (e.g. "aalu.localhost:3000"). Django's
+      // multi-tenant resolution (Company.resolve_from_request, see
+      // backend/company/models.py) reads that Host header to figure out
+      // which company's subdomain the request came from. Losing it
+      // silently breaks tenant detection and falls back to "first
+      // company in the DB" for unauthenticated requests - a real
+      // cross-tenant data leak, not just a cosmetic bug.
+      changeOrigin: false,
       pathFilter: (reqPath) => reqPath !== "/api/health",
       on: {
+        proxyReq: (proxyReq, req) => {
+          // Belt-and-suspenders: explicitly forward the original Host
+          // too, in case any upstream code prefers X-Forwarded-Host.
+          const originalHost = req.headers.host;
+          if (originalHost) {
+            proxyReq.setHeader("X-Forwarded-Host", originalHost);
+          }
+        },
         error: (err, req, res) => {
           console.error(`Proxy Error for ${req.url}:`, err.message);
           if (!res.headersSent) {
@@ -76,7 +94,11 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[${new Date().toISOString()}] Server running on http://0.0.0.0:${PORT}`);
+    // NOTE: we still BIND to 0.0.0.0 (correct - means "listen on every
+    // network interface", required for Docker/external access). But we
+    // LOG a real, clickable URL instead, since "http://0.0.0.0:PORT" is
+    // not a valid address to visit in a browser.
+    console.log(`[${new Date().toISOString()}] Server running -> http://localhost:${PORT}`);
   });
 }
 

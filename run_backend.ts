@@ -46,7 +46,7 @@ export function startDjango() {
     const checkDjango = await runCommand(pythonCmd, ["-c", "import django; print(django.get_version())"]);
     if (checkDjango !== 0) {
       console.log("Django not found. Installing requirements...");
-      await runCommand(pythonCmd, ["-m", "pip", "install", "-r", "requirements.txt"]);
+      await runCommand(pythonCmd, ["-m", "pip", "install", "--break-system-packages", "-r", "requirements.txt"]);
     }
 
     console.log("Starting Gunicorn server on 8001...");
