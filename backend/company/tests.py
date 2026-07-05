@@ -1,8 +1,10 @@
+from types import SimpleNamespace
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from company.admin import CompanyAdmin
 from company.models import Company
 from efrontend.models import Product, Category, Order
 
@@ -90,3 +92,21 @@ class MultiVendorTestCase(TestCase):
         order_c2 = orders.get(company=self.company2)
         self.assertEqual(order_c2.subtotal, 60) # 2 quantity * 30
         self.assertEqual(order_c2.items.count(), 1)
+
+    def test_company_admin_credentials_are_created_from_form_data(self):
+        """The admin save hook should create the company owner from form-cleaned credentials."""
+        admin = CompanyAdmin(Company, None)
+        request = SimpleNamespace(user=self.user1)
+        obj = Company(name="Build Co", slug="build-co")
+        form = SimpleNamespace(cleaned_data={
+            'admin_name': 'Vendor Admin',
+            'admin_email': 'vendor@example.com',
+            'admin_password': 'VendorSecret123!',
+        })
+
+        admin.save_model(request, obj, form, False)
+
+        user = User.objects.get(email='vendor@example.com')
+        self.assertTrue(user.check_password('VendorSecret123!'))
+        self.assertEqual(user.company, obj)
+        self.assertEqual(obj.owner, user)

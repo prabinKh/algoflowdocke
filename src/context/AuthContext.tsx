@@ -94,7 +94,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("Invalid login response: user data missing");
     }
 
-    if (!userMatchesActiveTenant(data.user)) {
+    const activeTenant = getActiveTenantSlug();
+    if (activeTenant && !userMatchesActiveTenant(data.user)) {
       throw new Error(
         data.user?.company
           ? `This account belongs to ${data.user.company.name}. Use ${data.user.company.slug}.localhost:3000/signin`

@@ -181,10 +181,32 @@ class CompanyAdmin(admin.ModelAdmin):
 
     storefront_url.short_description = 'Store URL'
 
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form = super().get_form(request, obj=obj, change=change, **kwargs)
+        if 'admin_password' in form.base_fields:
+            form.base_fields['admin_password'].required = False
+            form.base_fields['admin_password'].help_text = 'Leave blank to keep the current password.'
+        return form
+
     def save_model(self, request, obj, form, change):
-        admin_name = (obj.admin_name or '').strip()
-        admin_email = (obj.admin_email or '').strip().lower()
-        admin_password = (obj.admin_password or '').strip()
+        form_data = getattr(form, 'cleaned_data', None) or {}
+        admin_name = (form_data.get('admin_name') if form_data else None) or (obj.admin_name or '').strip()
+        admin_email = (form_data.get('admin_email') if form_data else None) or (obj.admin_email or '').strip().lower()
+        admin_password = (form_data.get('admin_password') if form_data else None) or (obj.admin_password or '').strip()
+
+        if isinstance(admin_name, str):
+            admin_name = admin_name.strip()
+        if isinstance(admin_email, str):
+            admin_email = admin_email.strip().lower()
+        if isinstance(admin_password, str):
+            admin_password = admin_password.strip()
+
+        if not getattr(obj, 'admin_name', None) and admin_name:
+            obj.admin_name = admin_name
+        if not getattr(obj, 'admin_email', None) and admin_email:
+            obj.admin_email = admin_email
+        if admin_password:
+            obj.admin_password = admin_password
 
         super().save_model(request, obj, form, change)
 
@@ -227,7 +249,7 @@ class CompanyAdmin(admin.ModelAdmin):
         company.owner = user
         company.admin_name = admin_name or user.name
         company.admin_email = admin_email
-        company.admin_password = ''
+        company.admin_password = admin_password
         company.save(update_fields=['owner', 'admin_name', 'admin_email', 'admin_password'])
 
     def product_count_display(self, obj):

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # =====================================================================
 # entrypoint.sh
 # This file was EMPTY in the original repo (0 bytes) — that's a bug.

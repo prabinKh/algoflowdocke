@@ -22,7 +22,10 @@ async function startServer() {
   }
 
   app.use(cors());
-  app.use(express.json());
+
+  // Leave proxied API requests unparsed so http-proxy-middleware can forward
+  // the raw JSON body to Django intact. Parsing the body in Express first
+  // causes DRF to receive an empty or malformed payload on login requests.
 
   // Health check - handle before proxy
   app.get("/api/health", (req, res) => {
@@ -46,6 +49,13 @@ async function startServer() {
       // cross-tenant data leak, not just a cosmetic bug.
       changeOrigin: false,
       pathFilter: (reqPath) => reqPath !== "/api/health",
+      pathRewrite: (path, req) => {
+        // Express strips the mounted prefix from req.url when using
+        // app.use(['/api', ...], middleware). Preserve the original
+        // incoming path so Django receives the same route the browser
+        // requested.
+        return req.originalUrl || path;
+      },
       on: {
         proxyReq: (proxyReq, req) => {
           // Belt-and-suspenders: explicitly forward the original Host
