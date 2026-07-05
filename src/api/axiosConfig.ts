@@ -16,7 +16,7 @@ const axiosInstance = axios.create({
 axiosInstance.interceptors.request.use(
   (config) => {
     const url = typeof config.url === 'string' ? config.url : '';
-    config.url = normalizeApiUrl(url);
+    config.url = normalizeApiUrl(url, API_URL);
 
     // Get token directly from storage to avoid circular dependency with authService
     const token = safeStorage.getItem(tenantStorageKey("access_token")) || safeStorage.getItem("access_token");
