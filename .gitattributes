@@ -1,0 +1,5 @@
+# Prevent Windows line endings and UTF-8 BOM (causes Docker "exec format error")
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf

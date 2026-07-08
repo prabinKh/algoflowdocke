@@ -54,8 +54,14 @@ RUN pip install --no-cache-dir --break-system-packages \
     --timeout 120 \
     -r backend/requirements.txt gunicorn
 
+# Bake admin static assets into the image (nginx + Node serve from this path)
+ENV DJANGO_SECRET_KEY=build-time-collectstatic-key
+RUN cd backend && python3 manage.py collectstatic --noinput
+
 COPY entrypoint.sh ./
-RUN chmod +x entrypoint.sh
+RUN sed -i '1s/^\xEF\xBB\xBF//' entrypoint.sh && \
+    sed -i 's/\r$//' entrypoint.sh && \
+    chmod +x entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -64,4 +70,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 3000
 EXPOSE 8001
 
-CMD ["./entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]

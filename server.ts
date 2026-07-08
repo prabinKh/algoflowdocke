@@ -32,9 +32,20 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
   });
 
-  // Proxy API and Admin requests to Django
+  // Serve Django admin static/media from disk (jazzmin CSS, uploaded files).
+  // Must run before the SPA catch-all and before proxying to gunicorn.
+  const staticRoot = path.join(process.cwd(), "backend", "staticfiles");
+  const mediaRoot = path.join(process.cwd(), "backend", "media");
+  if (fs.existsSync(staticRoot)) {
+    app.use("/static", express.static(staticRoot, { maxAge: "30d", immutable: true }));
+  }
+  if (fs.existsSync(mediaRoot)) {
+    app.use("/media", express.static(mediaRoot, { maxAge: "7d" }));
+  }
+
+  // Proxy API and admin HTML to Django
   app.use(
-    ["/api", "/django-admin", "/static", "/media"],
+    ["/api", "/django-admin"],
     createProxyMiddleware({
       target: "http://127.0.0.1:8001",
       // IMPORTANT: changeOrigin is OFF on purpose. With changeOrigin:true,

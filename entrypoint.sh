@@ -1,23 +1,4 @@
-﻿#!/bin/sh
-# =====================================================================
-# entrypoint.sh
-# This file was EMPTY in the original repo (0 bytes) â€” that's a bug.
-# The Dockerfile's CMD ["./entrypoint.sh"] would do nothing and the
-# container would exit immediately. This fills it in.
-#
-# WHAT IT DOES, IN ORDER:
-#   1. Waits for Postgres to accept connections (avoids the classic
-#      "django.db.utils.OperationalError: could not connect" crash
-#      that happens when the app container starts faster than the
-#      database container).
-#   2. Runs Django migrations - safe to run every restart, only
-#      applies new/pending migrations.
-#   3. Collects static files into backend/staticfiles/ so nginx can
-#      serve /static/ directly from disk (django-admin CSS/JS, etc).
-#   4. Starts the bundled Node server (dist/server.mjs), which in turn
-#      spawns gunicorn on :8001 via run_backend.ts - exactly like your
-#      existing server.ts already does.
-# =====================================================================
+#!/bin/sh
 set -e
 
 echo "[entrypoint] Waiting for database..."

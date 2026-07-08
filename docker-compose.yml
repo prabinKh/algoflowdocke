@@ -20,7 +20,8 @@ services:
       - static_data:/app/backend/staticfiles:ro
       - media_data:/app/backend/media:ro
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
   # ===================================================================
   # app - your existing Node + Django container (built from the
