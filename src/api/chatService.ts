@@ -94,6 +94,12 @@ export const chatService = {
     let lastTimestamp: string | null = null;
     let allMessages: Message[] = [];
 
+    const mapMessages = (data: Record<string, unknown>[]) =>
+      data.map((msg) => ({
+        ...msg,
+        type: msg.msg_type,
+      })) as Message[];
+
     const fetchMessages = async () => {
       try {
         const params: Record<string, string> = { session_id: sessionId };
@@ -103,18 +109,25 @@ export const chatService = {
 
         const response = await axiosInstance.get("/chat/chat-messages/", { params });
         const data = Array.isArray(response.data) ? response.data : (response.data.results || []);
-        const newMessages = data.map((msg: Record<string, unknown>) => ({
-          ...msg,
-          type: msg.msg_type // Map msg_type to type
-        })) as Message[];
+        const newMessages = mapMessages(data);
+
+        if (!lastTimestamp) {
+          allMessages = newMessages;
+          if (newMessages.length > 0) {
+            lastTimestamp = newMessages[newMessages.length - 1].timestamp;
+          }
+          callback(allMessages);
+          return;
+        }
 
         if (newMessages.length > 0) {
-          lastTimestamp = newMessages[newMessages.length - 1].timestamp;
-          allMessages = [...allMessages, ...newMessages];
-          callback(allMessages);
-        } else if (!lastTimestamp) {
-          // Initial empty load
-          callback([]);
+          const existingIds = new Set(allMessages.map((m) => m.id).filter(Boolean));
+          const uniqueNew = newMessages.filter((m) => m.id && !existingIds.has(m.id));
+          if (uniqueNew.length > 0) {
+            allMessages = [...allMessages, ...uniqueNew];
+            lastTimestamp = newMessages[newMessages.length - 1].timestamp;
+            callback(allMessages);
+          }
         }
       } catch (error) {
         console.error("Error polling messages:", error);
@@ -122,7 +135,7 @@ export const chatService = {
     };
 
     fetchMessages();
-    const interval = setInterval(fetchMessages, 2000); // Polling every 2 seconds for deltas
+    const interval = setInterval(fetchMessages, 2000);
     return () => clearInterval(interval);
   },
 

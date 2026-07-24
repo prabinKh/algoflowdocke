@@ -12,6 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import { chatService, Message, ChatSession } from "@/api/chatService";
 import { repairService } from "@/api/repairService";
 import { useLocation, useNavigate } from "react-router-dom";
+import { MessageAttachments, buildAttachmentsMetadata } from "@/components/UniversalFilePreview";
 
 interface ChatPayload {
   type?: 'repair' | 'product';
@@ -317,14 +318,16 @@ export const ChatWidget: React.FC = () => {
     if (!files || files.length === 0 || !sessionId) return;
 
     setIsUploading(true);
-    const uploadPromises = Array.from(files).map(async (file) => {
+    const fileList = Array.from(files);
+    const uploadPromises = fileList.map(async (file) => {
       const path = `chats/${sessionId}/${Date.now()}_${file.name}`;
       return await chatService.uploadFile(file, path);
     });
 
     try {
       const urls = await Promise.all(uploadPromises);
-      await handleSend(`Sent ${files.length} file(s)`, urls, true);
+      const metadata = buildAttachmentsMetadata(fileList, urls);
+      await handleSend(`Sent ${fileList.length} file(s)`, urls, true, metadata);
       toast.success("Files uploaded successfully");
     } catch (error) {
       console.error("Upload failed:", error);
@@ -371,7 +374,7 @@ export const ChatWidget: React.FC = () => {
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
       setIsRecording(true);
       setRecordingDuration(0);
       timerRef.current = setInterval(() => {
@@ -412,9 +415,21 @@ export const ChatWidget: React.FC = () => {
     setIsUploading(true);
     try {
       const url = await chatService.uploadFile(recordedAudio.blob, path);
-      await handleSend("Voice message", [url], false, { type: "audio" });
+      await handleSend("Voice message", [url], false, {
+        type: "audio",
+        mimeType,
+        duration: recordingDuration,
+        attachmentsMeta: [{
+          url,
+          type: "audio",
+          mimeType,
+          name: `voice_note.${extension}`,
+          duration: recordingDuration,
+        }],
+      });
       toast.success("Voice message sent");
       setRecordedAudio(null);
+      setRecordingDuration(0);
     } catch (error) {
       console.error("Voice upload failed:", error);
       toast.error("Failed to send voice message");
@@ -472,68 +487,6 @@ export const ChatWidget: React.FC = () => {
             View Details
           </a>
         </div>
-      </div>
-    );
-  };
-
-  const renderAttachments = (attachments?: string[], metadata?: Record<string, unknown>) => {
-    if (!attachments || attachments.length === 0) return null;
-
-    return (
-      <div className="mt-2 space-y-2">
-        {attachments.map((url, i) => {
-          const isImage = url.match(/\.(jpeg|jpg|gif|png|webp|avif)/i) || url.includes("image");
-          const isVideo = url.match(/\.(mp4|webm|ogg|mov|m4v)/i) || url.includes("video");
-          const isAudio = (url.match(/\.(mp3|wav|m4a|aac|opus)/i) || url.includes("audio") || url.includes("voice_note") || metadata?.type === 'audio') && !isVideo;
-          
-          if (isImage) {
-            return (
-              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block relative group">
-                <img src={url} alt="Attachment" className="max-w-full rounded-lg border border-slate-200 shadow-sm transition-all hover:brightness-90" referrerPolicy="no-referrer" />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                   <div className="bg-black/50 text-white p-2 rounded-full backdrop-blur-sm">
-                      <Maximize2 size={16} />
-                   </div>
-                </div>
-              </a>
-            );
-          }
-
-          if (isVideo) {
-            return (
-              <div key={i} className="rounded-lg overflow-hidden border border-slate-200 bg-black/5 max-w-full">
-                <video src={url} controls className="max-w-full max-h-[300px]" />
-              </div>
-            );
-          }
-
-          if (isAudio) {
-            return (
-              <div key={i} className="bg-slate-100 p-2 rounded-lg flex items-center gap-2 border border-slate-200 shadow-sm">
-                <audio key={url} controls className="h-8 w-full min-w-[200px]">
-                  <source src={url} type={metadata?.mimeType as string | undefined} />
-                  Your browser does not support the audio element.
-                </audio>
-              </div>
-            );
-          }
-
-          return (
-            <a 
-              key={i} 
-              href={url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="flex items-center gap-2 p-2.5 bg-slate-100 rounded-xl text-xs hover:bg-slate-200 transition-colors border border-slate-200"
-            >
-              <Paperclip className="h-4 w-4 text-primary" />
-              <div className="flex flex-col">
-                <span className="font-bold truncate max-w-[150px]">View Attachment</span>
-                <span className="text-[10px] opacity-60">File {i + 1}</span>
-              </div>
-            </a>
-          );
-        })}
       </div>
     );
   };
@@ -681,10 +634,14 @@ export const ChatWidget: React.FC = () => {
                               </span>
                             </div>
                             <div className="whitespace-pre-wrap break-words leading-relaxed overflow-hidden text-sm">
-                              {msg.sender === "user" ? msg.text : <Markdown>{msg.text}</Markdown>}
+                              {msg.sender === "user" ? (
+                                msg.text && msg.text !== "Voice message" && !msg.text.startsWith("Sent ") ? msg.text : null
+                              ) : (
+                                msg.text && msg.text !== "Voice message" && !msg.text.startsWith("Sent ") ? <Markdown>{msg.text}</Markdown> : null
+                              )}
                             </div>
                             {renderProductCard(msg.metadata)}
-                            {renderAttachments(msg.attachments, msg.metadata)}
+                            <MessageAttachments attachments={msg.attachments} metadata={msg.metadata} variant="widget" />
                             <div className={`text-[8px] font-medium mt-1 px-1 ${msg.sender === "user" ? "text-white/60 text-right" : "text-muted-foreground text-left"}`}>
                               {msg.timestamp ? (typeof msg.timestamp.toDate === 'function' ? msg.timestamp.toDate() : new Date(msg.timestamp as string | number | Date)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
                             </div>
@@ -734,6 +691,7 @@ export const ChatWidget: React.FC = () => {
                       ref={fileInputRef} 
                       className="hidden" 
                       onChange={handleFileUpload}
+                      accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
                       multiple
                     />
                     <Button 

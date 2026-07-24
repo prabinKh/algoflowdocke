@@ -4,11 +4,7 @@ import {
   MessageSquare, 
   Search, 
   Send, 
-  User, 
-  Check, 
   CheckCheck, 
-  Clock,
-  MoreVertical,
   Phone,
   Video,
   Info,
@@ -17,9 +13,8 @@ import {
   Mic,
   ArrowLeft,
   X as LucideX,
-  Play,
-  Pause
 } from "lucide-react";
+import { MessageAttachments, buildAttachmentsMetadata } from "@/components/UniversalFilePreview";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -120,14 +115,16 @@ const AdminMessages = () => {
     if (!files || files.length === 0 || !selectedSession) return;
 
     setIsUploading(true);
-    const uploadPromises = Array.from(files).map(async (file) => {
+    const fileList = Array.from(files);
+    const uploadPromises = fileList.map(async (file) => {
       const path = `chats/${selectedSession.id}/${Date.now()}_${file.name}`;
       return await chatService.uploadFile(file, path);
     });
 
     try {
       const urls = await Promise.all(uploadPromises);
-      await handleSend(`Sent ${files.length} file(s)`, urls);
+      const metadata = buildAttachmentsMetadata(fileList, urls);
+      await handleSend(`Sent ${fileList.length} file(s)`, urls, metadata);
       toast.success("Files uploaded successfully");
     } catch (error) {
       console.error("Upload failed:", error);
@@ -171,7 +168,7 @@ const AdminMessages = () => {
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
       setIsRecording(true);
       setRecordingDuration(0);
       timerRef.current = setInterval(() => {
@@ -212,7 +209,12 @@ const AdminMessages = () => {
     setIsUploading(true);
     try {
       const url = await chatService.uploadFile(recordedAudio.blob, path);
-      await handleSend("Voice message", [url], { type: "audio", mimeType, duration: recordingDuration });
+      await handleSend("Voice message", [url], {
+        type: "audio",
+        mimeType,
+        duration: recordingDuration,
+        attachmentsMeta: [{ url, type: "audio", mimeType, name: `voice_note.${extension}`, duration: recordingDuration }],
+      });
       toast.success("Voice message sent");
       setRecordedAudio(null);
       setRecordingDuration(0);
@@ -232,174 +234,8 @@ const AdminMessages = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleAudioPlay = (audioId: string) => {
-    const audioElement = audioRefs.current.get(audioId);
-    if (!audioElement) {
-      console.warn("Audio element not found for:", audioId);
-      return;
-    }
-
-    // Pause any other currently playing audio
-    if (playingAudioId && playingAudioId !== audioId) {
-      const prevAudio = audioRefs.current.get(playingAudioId);
-      if (prevAudio) {
-        prevAudio.pause();
-        prevAudio.currentTime = 0;
-      }
-    }
-    
-    if (playingAudioId === audioId) {
-      audioElement.pause();
-      setPlayingAudioId(null);
-      return;
-    }
-
-    const attemptPlay = () => {
-      const playPromise = audioElement.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setPlayingAudioId(audioId);
-          })
-          .catch((e) => {
-            console.error("Play failed:", e);
-            const err = audioElement.error;
-            if (err?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-              toast.error("Audio format not supported by this browser");
-            } else if (err?.code === MediaError.MEDIA_ERR_NETWORK) {
-              toast.error("Network error loading audio");
-            } else {
-              toast.error("Unable to play audio");
-            }
-            setPlayingAudioId(null);
-          });
-      } else {
-        setPlayingAudioId(audioId);
-      }
-    };
-
-    // If the element previously errored out, force it to reload before retrying
-    if (audioElement.error || audioElement.networkState === audioElement.NETWORK_NO_SOURCE) {
-      audioElement.load();
-      const handleCanPlay = () => {
-        audioElement.removeEventListener('canplay', handleCanPlay);
-        attemptPlay();
-      };
-      audioElement.addEventListener('canplay', handleCanPlay);
-    } else {
-      attemptPlay();
-    }
-  };
-
-  const VoiceMessagePlayer = ({ url, mimeType, messageId, duration: propDuration }: { url: string; mimeType?: string; messageId: string; duration?: number }) => {
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-    const isPlaying = playingAudioId === messageId;
-    const progress = audioProgress[messageId] || { current: 0, duration: propDuration || 0 };
-
-    // Register/unregister this audio element in the shared ref map
-    useEffect(() => {
-      const audio = audioRef.current;
-      if (audio) {
-        audioRefs.current.set(messageId, audio);
-      }
-      return () => {
-        audioRefs.current.delete(messageId);
-      };
-    }, [messageId]);
-
-    // Attach playback event listeners
-    useEffect(() => {
-      const audio = audioRef.current;
-      if (!audio) return;
-
-      const handleTimeUpdate = () => {
-        const current = audio.currentTime || 0;
-        const duration = (isFinite(audio.duration) ? audio.duration : propDuration) || 0;
-        setAudioProgress(prev => ({ 
-          ...prev, 
-          [messageId]: { current, duration }
-        }));
-      };
-
-      const handleLoadedMetadata = () => {
-        const duration = (isFinite(audio.duration) ? audio.duration : propDuration) || 0;
-        setAudioProgress(prev => ({ 
-          ...prev, 
-          [messageId]: { current: prev[messageId]?.current || 0, duration }
-        }));
-      };
-
-      const handleEnded = () => {
-        setPlayingAudioId(prev => (prev === messageId ? null : prev));
-        setAudioProgress(prev => ({ 
-          ...prev, 
-          [messageId]: { current: 0, duration: prev[messageId]?.duration || propDuration || 0 } 
-        }));
-      };
-
-      const handleError = () => {
-        const err = audio.error;
-        let reason = "Unknown error";
-        if (err) {
-          switch (err.code) {
-            case MediaError.MEDIA_ERR_ABORTED:
-              reason = "Playback aborted";
-              break;
-            case MediaError.MEDIA_ERR_NETWORK:
-              reason = "Network error while loading audio";
-              break;
-            case MediaError.MEDIA_ERR_DECODE:
-              reason = "Audio could not be decoded (unsupported codec)";
-              break;
-            case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-              reason = "Audio source not supported (check CORS / file URL)";
-              break;
-          }
-        }
-        console.error("Failed to load audio:", url, reason, err);
-      };
-
-      audio.addEventListener('timeupdate', handleTimeUpdate);
-      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('ended', handleEnded);
-      audio.addEventListener('error', handleError);
-
-      return () => {
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
-        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('ended', handleEnded);
-        audio.removeEventListener('error', handleError);
-      };
-    }, [messageId, propDuration, url]);
-
-    return (
-      <div className="flex items-center gap-3 bg-muted/50 rounded-full px-3 py-1.5 w-max">
-        <audio ref={audioRef} preload="metadata">
-          {mimeType && <source src={url} type={mimeType} />}
-          <source src={url} />
-        </audio>
-        <button
-          type="button"
-          onClick={() => handleAudioPlay(messageId)}
-          className="w-7 h-7 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center transition-all shadow-sm flex-shrink-0"
-        >
-          {isPlaying ? (
-            <Pause size={12} className="text-white" />
-          ) : (
-            <Play size={12} className="text-white ml-0.5" />
-          )}
-        </button>
-        <div className="w-24 h-1 bg-gray-300 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-emerald-500 transition-all duration-100"
-            style={{ width: `${progress.duration > 0 ? (progress.current / progress.duration) * 100 : 0}%` }}
-          />
-        </div>
-        <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
-          {formatDuration(progress.current)} / {formatDuration(progress.duration)}
-        </span>
-      </div>
-    );
+  const handleAudioProgressChange = (id: string, progress: { current: number; duration: number }) => {
+    setAudioProgress((prev) => ({ ...prev, [id]: progress }));
   };
 
   const renderProductCard = (metadata: Record<string, unknown> | null | undefined) => {
@@ -434,53 +270,6 @@ const AdminMessages = () => {
             View Product
           </a>
         </div>
-      </div>
-    );
-  };
-
-  const renderAttachments = (attachments?: string[], metadata?: Record<string, unknown>) => {
-    if (!attachments || attachments.length === 0) return null;
-
-    return (
-      <div className="mt-2 space-y-2">
-        {attachments.map((url, i) => {
-          const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)/i) || url.includes("image");
-          const isAudio = metadata?.type === 'audio' || url.match(/\.(mp3|wav|webm|ogg|m4a|mp4|aac)/i) || url.includes("audio") || url.includes("voice_note");
-          
-          if (isImage) {
-            return (
-              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                <img src={url} alt="Attachment" className="max-w-[200px] rounded-lg border border-border shadow-sm hover:opacity-90 transition-opacity" referrerPolicy="no-referrer" />
-              </a>
-            );
-          }
-
-          if (isAudio) {
-            const messageId = `audio_${url}`;
-            return (
-              <VoiceMessagePlayer 
-                key={i}
-                url={url} 
-                mimeType={metadata?.mimeType as string} 
-                messageId={messageId}
-                duration={metadata?.duration as number}
-              />
-            );
-          }
-
-          return (
-            <a 
-              key={i} 
-              href={url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="flex items-center gap-2 p-2 bg-muted rounded-lg text-xs hover:bg-accent transition-colors"
-            >
-              <Paperclip className="h-3 w-3" />
-              <span className="truncate max-w-[150px]">View Attachment</span>
-            </a>
-          );
-        })}
       </div>
     );
   };
@@ -635,11 +424,20 @@ const AdminMessages = () => {
                             ? "bg-accent text-muted-foreground rounded-tl-none border border-border italic"
                             : "bg-card text-foreground rounded-tl-none border border-border"
                         }`}>
-                          {msg.text && msg.text.trim() !== "" && msg.text !== "Voice message" && (
+                          {msg.text && msg.text.trim() !== "" && msg.text !== "Voice message" && !msg.text.startsWith("Sent ") && (
                             <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                           )}
                           {renderProductCard(msg.metadata)}
-                          {renderAttachments(msg.attachments, msg.metadata)}
+                          <MessageAttachments
+                            attachments={msg.attachments}
+                            metadata={msg.metadata}
+                            variant="admin"
+                            playingAudioId={playingAudioId}
+                            onPlayStateChange={setPlayingAudioId}
+                            audioRefs={audioRefs}
+                            audioProgress={audioProgress}
+                            onProgressChange={handleAudioProgressChange}
+                          />
                         </div>
                         <div className={`flex items-center gap-1.5 px-1 ${isMe ? "justify-end" : "justify-start"}`}>
                           <span className="text-[10px] text-muted-foreground">
@@ -667,6 +465,7 @@ const AdminMessages = () => {
                   ref={fileInputRef} 
                   className="hidden" 
                   onChange={handleFileUpload}
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip"
                   multiple
                 />
                 <button 

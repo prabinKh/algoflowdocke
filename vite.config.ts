@@ -33,6 +33,10 @@ export default defineConfig(({ mode }) => {
           // subdomain-based tenant detection (Company.resolve_from_request).
           changeOrigin: false,
         },
+        '/media': {
+          target: 'http://127.0.0.1:8001',
+          changeOrigin: false,
+        },
       },
     },
   };
